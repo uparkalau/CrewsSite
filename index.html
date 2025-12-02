@@ -360,7 +360,7 @@
                 const formData = new FormData(waitlistForm);
                 const accessKey = formData.get('access_key');
                 
-                if (accessKey === '6fc7e4c7-d72d-44d2-9f79-4a9603119c31' || !accessKey) {
+                if (accessKey === 'YOUR_WEB3FORMS_ACCESS_KEY' || !accessKey) {
                     feedback.textContent = 'Please replace YOUR_WEB3FORMS_ACCESS_KEY with your actual key to enable submissions.';
                     feedback.className = 'mt-4 text-sm font-medium h-6 text-red-400';
                     button.disabled = false;
