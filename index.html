@@ -102,7 +102,7 @@
                 Manage Your <span class="text-site-secondary">Crew,</span> Capture The <span class="text-site-secondary">Work.</span>
             </h1>
             <p class="text-xl sm:text-2xl mb-8 text-gray-300 max-w-3xl mx-auto">
-                **CrewsSite** provides secure login, geo-verified time tracking, daily reporting, and automated payroll for modern construction teams.
+                CrewsSite provides secure login, geo-verified time tracking, daily reporting, and automated payroll for modern construction teams.
             </p>
             <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
                 <a href="#" class="w-full sm:w-auto px-8 py-3 bg-site-secondary text-site-dark font-bold text-lg rounded-xl shadow-lg hover:bg-yellow-400 transition duration-300 transform hover:scale-[1.05] ring-4 ring-site-secondary/50">
@@ -243,7 +243,7 @@
                 Works Everywhere Your Team Works
             </h2>
             <p class="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-                **CrewsSite** is built as a highly responsive web application, ready to be installed as a Progressive Web App (PWA) on Windows, Android, and iOS.
+                CrewsSite is built as a highly responsive web application, ready to be installed as a Progressive Web App (PWA) on Windows, Android, and iOS.
             </p>
             <div class="flex flex-wrap justify-center items-center space-x-6">
                 <div class="text-center p-4 rounded-lg">
@@ -275,7 +275,7 @@
             <!-- Email Signup Form -->
             <form id="waitlistForm" class="max-w-md mx-auto">
                 <!-- IMPORTANT: Replace 'YOUR_WEB3FORMS_ACCESS_KEY' with your actual key -->
-                <input type="hidden" name="access_key" value="YOUR_WEB3FORMS_ACCESS_KEY">
+                <input type="hidden" name="access_key" value="6fc7e4c7-d72d-44d2-9f79-4a9603119c31">
                 <input type="hidden" name="subject" value="New Waitlist Sign-up for CrewsSite">
 
                 <div class="flex flex-col sm:flex-row gap-3 justify-center">
@@ -360,7 +360,7 @@
                 const formData = new FormData(waitlistForm);
                 const accessKey = formData.get('access_key');
                 
-                if (accessKey === 'YOUR_WEB3FORMS_ACCESS_KEY' || !accessKey) {
+                if (accessKey === '6fc7e4c7-d72d-44d2-9f79-4a9603119c31' || !accessKey) {
                     feedback.textContent = 'Please replace YOUR_WEB3FORMS_ACCESS_KEY with your actual key to enable submissions.';
                     feedback.className = 'mt-4 text-sm font-medium h-6 text-red-400';
                     button.disabled = false;
