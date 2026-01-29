@@ -1,9 +1,17 @@
-/* eslint-disable react-refresh/only-export-components */
+/**
+ * Firebase Configuration & Initialization
+ * Centralized setup for all Firebase services
+ */
+
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage'
 
-// Firebase Configuration
+/**
+ * Firebase project configuration
+ * @type {object}
+ */
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -14,28 +22,15 @@ const firebaseConfig = {
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
-export const db = getFirestore(app)
+const firebaseApp = initializeApp(firebaseConfig)
 
-// Firestore Collection Paths (Following artifact structure)
-export const PATHS = {
-  // Public Data Scope
-  PUBLIC: {
-    SITES: 'artifacts/crewssite/public/data/sites',
-    CHATS: 'artifacts/crewssite/public/data/chats',
-  },
-  // Private Data Scope
-  USERS: {
-    PROFILE: (userId) => `artifacts/crewssite/users/${userId}/profile`,
-    ATTENDANCE: (userId) => `artifacts/crewssite/users/${userId}/attendance`,
-  },
-}
+// Export Firebase services
+export const firebaseAuth = getAuth(firebaseApp)
+export const firebaseDb = getFirestore(firebaseApp)
+export const firebaseStorage = getStorage(firebaseApp)
 
-// User Roles
-export const ROLES = {
-  TEAM_MEMBER: 'member',
-  PROJECT_HEAD: 'head',
-}
+// Backward compatibility exports
+export const auth = firebaseAuth
+export const db = firebaseDb
 
-export default app
+export default firebaseApp

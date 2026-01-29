@@ -3,29 +3,46 @@
  * Handles check-in/out with GPS and photo verification
  */
 
-import { db, PATHS } from '../config/firebase'
-import { collection, addDoc, updateDoc, doc, query, where, getDocs, Timestamp } from 'firebase/firestore'
-import { AttendanceLog } from '../models/dataModels'
+import { addDoc, collection, doc, getDocs, query, Timestamp, updateDoc, where } from 'firebase/firestore'
+import { firebaseDb } from '../config/firebase'
+import { USER_PATHS } from '../constants/firebasePaths'
+import { isLocationWithinGeofence } from '../utils/gpsUtils'
 
 /**
- * Calculate distance between two GPS coordinates (in meters)
- * Uses Haversine formula
+ * Data model for attendance logs
  */
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371e3 // Earth radius in meters
-/**
- * Converts the first latitude value from degrees to radians
- * @type {number}
- */
-  const φ1 = (lat1 * Math.PI) / 180
-  const φ2 = (lat2 * Math.PI) / 180
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180
-  const Δλ = ((lon2 - lon1) * Math.PI) / 180
+class AttendanceLog {
+  constructor(data) {
+    this.userId = data.userId
+    this.siteId = data.siteId
+    this.clockIn = data.clockIn
+    this.clockOut = data.clockOut || null
+    this.photoUrl = data.photoUrl
+    this.clockInGps = data.clockInGps
+    this.clockOutGps = data.clockOutGps || null
+    this.gpsMatch = data.gpsMatch
+    this.status = data.status
+  }
 
-  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return R * c
+  toFirestore() {
+    return {
+      userId: this.userId,
+      siteId: this.siteId,
+      clockIn: this.clockIn,
+      clockOut: this.clockOut,
+      photoUrl: this.photoUrl,
+      clockInGps: this.clockInGps,
+      clockOutGps: this.clockOutGps,
+      gpsMatch: this.gpsMatch,
+      status: this.status,
+    }
+  }
+
+  static fromFirestore(data, documentId) {
+    const log = new AttendanceLog(data)
+    log.id = documentId
+    return log
+  }
 }
 
 export const attendanceService = {
@@ -38,126 +55,152 @@ export const attendanceService = {
    * @param {string} photoUrl - Photo verification URL
    * @param {object} siteLocation - Site center {latitude, longitude}
    * @param {number} radius - Allowed radius in meters
+   * @returns {Promise<object>} Clock in record with verification status
    */
   clockIn: async (userId, siteId, latitude, longitude, photoUrl, siteLocation, radius) => {
     try {
-      // Check if GPS is within allowed radius
-      const distance = calculateDistance(
+      const geofenceResult = isLocationWithinGeofence(
         latitude,
         longitude,
         siteLocation.latitude,
-        siteLocation.longitude
+        siteLocation.longitude,
+        radius
       )
-      const gpsMatch = distance <= radius
 
-      const log = new AttendanceLog({
+      const attendanceLog = new AttendanceLog({
         userId,
         siteId,
         clockIn: Timestamp.now(),
         photoUrl,
         clockInGps: { latitude, longitude },
-        gpsMatch,
-        status: gpsMatch ? 'verified' : 'out_of_range',
+        gpsMatch: geofenceResult.isWithinRadius,
+        status: geofenceResult.isWithinRadius ? 'verified' : 'out_of_range',
       })
 
-      const attendancePath = PATHS.USERS.ATTENDANCE(userId)
-      const docRef = await addDoc(collection(db, attendancePath), log.toFirestore())
+      const attendancePath = USER_PATHS.ATTENDANCE(userId)
+      const documentReference = await addDoc(
+        collection(firebaseDb, attendancePath),
+        attendanceLog.toFirestore()
+      )
 
       return {
-        id: docRef.id,
-        ...log,
-        gpsMatch,
-        distance,
+        id: documentReference.id,
+        ...attendanceLog,
+        distance: geofenceResult.distance,
       }
     } catch (error) {
-      console.error('Error during clock in:', error)
+      console.error('Error during clock in:', error.message)
       throw error
     }
   },
 
   /**
    * Clock Out - Completes attendance entry
+   * @param {string} userId - User ID
+   * @param {string} logId - Attendance log ID
+   * @param {number} latitude - Clock out latitude
+   * @param {number} longitude - Clock out longitude
+   * @returns {Promise<boolean>} Success status
    */
   clockOut: async (userId, logId, latitude, longitude) => {
     try {
-      const attendancePath = PATHS.USERS.ATTENDANCE(userId)
-      const docRef = doc(db, attendancePath, logId)
+      const attendancePath = USER_PATHS.ATTENDANCE(userId)
+      const documentReference = doc(firebaseDb, attendancePath, logId)
 
-      await updateDoc(docRef, {
+      await updateDoc(documentReference, {
         clockOut: Timestamp.now(),
         clockOutGps: { latitude, longitude },
       })
 
       return true
     } catch (error) {
-      console.error('Error during clock out:', error)
+      console.error('Error during clock out:', error.message)
       throw error
     }
   },
 
   /**
    * Get today's attendance log for user (if exists)
+   * @param {string} userId - User ID
+   * @param {string} siteId - Site ID
+   * @returns {Promise<object|null>} Today's attendance log or null
    */
   getTodayLog: async (userId, siteId) => {
     try {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      const todayStartTime = new Date()
+      todayStartTime.setHours(0, 0, 0, 0)
 
-      const attendancePath = PATHS.USERS.ATTENDANCE(userId)
-      const q = query(
-        collection(db, attendancePath),
+      const attendancePath = USER_PATHS.ATTENDANCE(userId)
+      const queryBuilder = query(
+        collection(firebaseDb, attendancePath),
         where('siteId', '==', siteId),
-        where('clockIn', '>=', Timestamp.fromDate(today))
+        where('clockIn', '>=', Timestamp.fromDate(todayStartTime))
       )
 
-      const snapshot = await getDocs(q)
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data()
-        return AttendanceLog.fromFirestore(data, snapshot.docs[0].id)
+      const querySnapshot = await getDocs(queryBuilder)
+      if (!querySnapshot.empty) {
+        const logData = querySnapshot.docs[0].data()
+        return AttendanceLog.fromFirestore(logData, querySnapshot.docs[0].id)
       }
       return null
     } catch (error) {
-      console.error('Error getting today log:', error)
+      console.error('Error getting today log:', error.message)
       throw error
     }
   },
 
   /**
    * Get attendance history for user (date range)
+   * @param {string} userId - User ID
+   * @param {Date} startDate - Range start date
+   * @param {Date} endDate - Range end date
+   * @returns {Promise<Array>} Array of attendance logs
    */
   getAttendanceHistory: async (userId, startDate, endDate) => {
     try {
-      const attendancePath = PATHS.USERS.ATTENDANCE(userId)
-      const q = query(
-        collection(db, attendancePath),
+      const attendancePath = USER_PATHS.ATTENDANCE(userId)
+      const queryBuilder = query(
+        collection(firebaseDb, attendancePath),
         where('clockIn', '>=', Timestamp.fromDate(startDate)),
         where('clockIn', '<=', Timestamp.fromDate(endDate))
       )
 
-      const snapshot = await getDocs(q)
-      return snapshot.docs.map(doc => AttendanceLog.fromFirestore(doc.data(), doc.id))
+      const querySnapshot = await getDocs(queryBuilder)
+      return querySnapshot.docs.map((document) =>
+        AttendanceLog.fromFirestore(document.data(), document.id)
+      )
     } catch (error) {
-      console.error('Error getting attendance history:', error)
+      console.error('Error getting attendance history:', error.message)
       throw error
     }
   },
 
   /**
    * Get attendance logs for entire crew (Project Head only)
+   * @param {Array<string>} userIds - Array of user IDs
+   * @param {Date} startDate - Range start date
+   * @param {Date} endDate - Range end date
+   * @returns {Promise<Array>} Combined attendance logs for all crew members
    */
   getCrewAttendance: async (userIds, startDate, endDate) => {
     try {
-      const allLogs = []
+      const allAttendanceLogs = []
 
       for (const userId of userIds) {
-        const logs = await attendanceService.getAttendanceHistory(userId, startDate, endDate)
-        allLogs.push(...logs)
+        const userAttendanceLogs = await attendanceService.getAttendanceHistory(
+          userId,
+          startDate,
+          endDate
+        )
+        allAttendanceLogs.push(...userAttendanceLogs)
       }
 
-      return allLogs
+      return allAttendanceLogs
     } catch (error) {
-      console.error('Error getting crew attendance:', error)
+      console.error('Error getting crew attendance:', error.message)
       throw error
     }
   },
 }
+
+export default attendanceService

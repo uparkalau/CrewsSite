@@ -1,78 +1,222 @@
 /**
  * Authentication Service - Module A: Safe Login
- * Handles user login, role checking, and profile management
+ * Handles user authentication and profile management
  */
 
-import { db, PATHS, ROLES } from '../config/firebase'
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
-import { UserProfile } from '../models/dataModels'
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  setPersistence,
+  browserLocalPersistence,
+} from 'firebase/auth'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { firebaseAuth, firebaseDb } from '../config/firebase'
+import { USER_PATHS } from '../constants/firebasePaths'
+import { USER_ROLES } from '../constants/appConstants'
+
+/**
+ * Data model for user profile
+ */
+class UserProfile {
+  constructor(data) {
+    this.uid = data.uid
+    this.fullName = data.fullName
+    this.email = data.email
+    this.phoneNumber = data.phoneNumber || null
+    this.role = data.role || USER_ROLES.TEAM_MEMBER
+    this.hourlyRate = data.hourlyRate || 0
+    this.profilePhotoUrl = data.profilePhotoUrl || null
+    this.createdAt = data.createdAt
+    this.updatedAt = data.updatedAt
+  }
+
+  toFirestore() {
+    return {
+      uid: this.uid,
+      fullName: this.fullName,
+      email: this.email,
+      phoneNumber: this.phoneNumber,
+      role: this.role,
+      hourlyRate: this.hourlyRate,
+      profilePhotoUrl: this.profilePhotoUrl,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    }
+  }
+
+  static fromFirestore(data, documentId) {
+    return new UserProfile({
+      ...data,
+      uid: documentId,
+    })
+  }
+}
 
 export const authService = {
   /**
-   * Create user profile after signup
+   * Register new user with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @param {string} fullName - User's full name
+   * @param {string} userRole - User role (member or head)
+   * @returns {Promise<object>} New user with profile data
    */
-  createUserProfile: async (userId, email, fullName, role = ROLES.TEAM_MEMBER) => {
+  registerUser: async (email, password, fullName, userRole = USER_ROLES.TEAM_MEMBER) => {
     try {
-      const profilePath = PATHS.USERS.PROFILE(userId)
-      const profile = new UserProfile({
-        email,
+      await setPersistence(firebaseAuth, browserLocalPersistence)
+
+      const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+      const user = userCredential.user
+
+      await updateProfile(user, { displayName: fullName })
+
+      const userProfile = new UserProfile({
+        uid: user.uid,
         fullName,
-        role,
+        email,
+        role: userRole,
         createdAt: new Date(),
+        updatedAt: new Date(),
       })
-      await setDoc(doc(db, profilePath), profile.toFirestore())
-      return profile
+
+      const profilePath = USER_PATHS.PROFILE(user.uid)
+      await setDoc(doc(firebaseDb, profilePath), userProfile.toFirestore())
+
+      return userProfile
     } catch (error) {
-      console.error('Error creating profile:', error)
+      console.error('Registration error:', error.message)
       throw error
     }
   },
 
   /**
-   * Get user profile
+   * Sign in user with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @returns {Promise<object>} Authenticated user profile
+   */
+  loginUser: async (email, password) => {
+    try {
+      await setPersistence(firebaseAuth, browserLocalPersistence)
+
+      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password)
+      const user = userCredential.user
+
+      const profilePath = USER_PATHS.PROFILE(user.uid)
+      const profileDoc = await getDoc(doc(firebaseDb, profilePath))
+
+      if (!profileDoc.exists()) {
+        throw new Error('User profile not found')
+      }
+
+      return UserProfile.fromFirestore(profileDoc.data(), user.uid)
+    } catch (error) {
+      console.error('Login error:', error.message)
+      throw error
+    }
+  },
+
+  /**
+   * Sign out current user
+   * @returns {Promise<void>}
+   */
+  logoutUser: async () => {
+    try {
+      await signOut(firebaseAuth)
+    } catch (error) {
+      console.error('Logout error:', error.message)
+      throw error
+    }
+  },
+
+  /**
+   * Get current user profile
+   * @param {string} userId - User ID
+   * @returns {Promise<object>} User profile data
    */
   getUserProfile: async (userId) => {
     try {
-      const profilePath = PATHS.USERS.PROFILE(userId)
-      const docSnap = await getDoc(doc(db, profilePath))
-      if (docSnap.exists()) {
-        return UserProfile.fromFirestore(docSnap.data())
+      const profilePath = USER_PATHS.PROFILE(userId)
+      const profileDoc = await getDoc(doc(firebaseDb, profilePath))
+
+      if (!profileDoc.exists()) {
+        throw new Error('User profile not found')
       }
-      return null
+
+      return UserProfile.fromFirestore(profileDoc.data(), userId)
     } catch (error) {
-      console.error('Error getting profile:', error)
+      console.error('Error fetching user profile:', error.message)
       throw error
     }
   },
 
   /**
-   * Update user profile (hourly rate, phone, etc.)
+   * Update user profile
+   * @param {string} userId - User ID
+   * @param {object} updateData - Data to update
+   * @returns {Promise<object>} Updated user profile
    */
-  updateUserProfile: async (userId, updates) => {
+  updateUserProfile: async (userId, updateData) => {
     try {
-      const profilePath = PATHS.USERS.PROFILE(userId)
-      await updateDoc(doc(db, profilePath), updates)
-      return true
+      const profilePath = USER_PATHS.PROFILE(userId)
+      const profileRef = doc(firebaseDb, profilePath)
+
+      const profileDoc = await getDoc(profileRef)
+      if (!profileDoc.exists()) {
+        throw new Error('User profile not found')
+      }
+
+      const currentProfile = UserProfile.fromFirestore(profileDoc.data(), userId)
+      const updatedProfile = new UserProfile({
+        ...currentProfile,
+        ...updateData,
+        updatedAt: new Date(),
+      })
+
+      await setDoc(profileRef, updatedProfile.toFirestore())
+
+      return updatedProfile
     } catch (error) {
-      console.error('Error updating profile:', error)
+      console.error('Error updating user profile:', error.message)
       throw error
     }
+  },
+
+  /**
+   * Get current authenticated user
+   * @returns {object|null} Current Firebase user or null
+   */
+  getCurrentUser: () => {
+    return firebaseAuth.currentUser
+  },
+
+  /**
+   * Check if user is authenticated
+   * @returns {boolean}
+   */
+  isAuthenticated: () => {
+    return firebaseAuth.currentUser !== null
   },
 
   /**
    * Check user role and determine redirect
-   * Returns: { role: 'member' | 'head', profile: UserProfile }
+   * @param {string} userId - User ID
+   * @returns {Promise<object>} Object with role and profile
    */
   checkUserRole: async (userId) => {
     try {
       const profile = await authService.getUserProfile(userId)
       return {
-        role: profile?.role || ROLES.TEAM_MEMBER,
+        role: profile?.role || USER_ROLES.TEAM_MEMBER,
         profile,
       }
     } catch (error) {
-      console.error('Error checking role:', error)
+      console.error('Error checking role:', error.message)
       throw error
     }
   },
 }
+
+export default authService
