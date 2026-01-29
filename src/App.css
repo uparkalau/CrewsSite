@@ -1,2 +1,117 @@
-/* App-specific styles (if needed in the future) */
+/* App-specific styles */
 
+/* Ensure proper body layout */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Ensure sections span full width */
+section {
+  width: 100%;
+}
+
+/* Mobile menu container transitions */
+.mobile-menu-container {
+  transition: transform 0.3s ease-out;
+  transform: translateX(100%);
+}
+
+.mobile-menu-container.open {
+  transform: translateX(0);
+}
+
+/* Smooth scrolling for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent horizontal overflow */
+body {
+  overflow-x: hidden;
+}
+
+/* Ensure images are responsive */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Container consistent sizing */
+.container {
+  width: 100%;
+  max-width: 80rem; /* max-w-7xl equivalent */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+/* Ensure proper link styling */
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+/* Fix form input styling */
+input[type="email"],
+input[type="text"],
+input[type="password"],
+textarea,
+select {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  font-family: inherit;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+input[type="email"]:focus,
+input[type="text"]:focus,
+input[type="password"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-site-primary);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.1);
+}
+
+/* Ensure button consistency */
+button {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  font-weight: 500;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Fix backdrop blur for modern browsers */
+.backdrop-blur-sm {
+  backdrop-filter: blur(4px);
+}
+
+/* Ensure table responsiveness */
+table {
+  width: 100%;
+}
+
+/* Navigation sticky behavior */
+header.sticky {
+  top: 0;
+  z-index: 40;
+}
+
+/* Fix footer spacing */
+footer {
+  width: 100%;
+  margin-top: auto;
+}
