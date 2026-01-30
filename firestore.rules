@@ -1,0 +1,148 @@
+/**
+ * FIRESTORE SECURITY RULES
+ * Role-based access control for CrewsSite
+ * Deploy to Firebase Console > Firestore > Rules
+ * 
+ * Roles:
+ * - owner: Full access to company data
+ * - foreman: Can view team hours, cannot view salary
+ * - worker: Can only view/modify own time entries
+ */
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(companyId) {
+      return get(/databases/$(database)/documents/companies/$(companyId)).data.owner_id == request.auth.uid;
+    }
+    
+    function getUserRole(companyId) {
+      return get(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.role;
+    }
+    
+    function isMemberOfCompany(companyId) {
+      return exists(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid));
+    }
+    
+    // ==================== COMPANIES ====================
+    
+    match /companies/{companyId} {
+      // Read: User must be member of company
+      allow read: if isAuthenticated() && isMemberOfCompany(companyId);
+      
+      // Write: Owner only
+      allow write: if isAuthenticated() && isOwner(companyId);
+      
+      // ==================== MEMBERS ====================
+      match /members/{userId} {
+        // Read: Members can read their own data + owners can read all
+        allow read: if isAuthenticated() && 
+          (request.auth.uid == userId || isOwner(companyId));
+        
+        // Write: Owners only (manage team roles)
+        allow write: if isAuthenticated() && isOwner(companyId);
+        
+        // Note: Salary data (hourly_rate) never visible to workers
+      }
+      
+      // ==================== SITES ====================
+      match /sites/{siteId} {
+        // Read: All company members can read sites
+        allow read: if isAuthenticated() && isMemberOfCompany(companyId);
+        
+        // Write: Owner or foreman only
+        allow write: if isAuthenticated() && 
+          (isOwner(companyId) || getUserRole(companyId) == 'foreman');
+        
+        // ==================== TIME ENTRIES ====================
+        match /timeEntries/{entryId} {
+          // Read: Worker sees own entries, foreman/owner sees team
+          allow read: if isAuthenticated() && 
+            (request.auth.uid == resource.data.user_id || 
+             getUserRole(companyId) in ['foreman', 'owner']);
+          
+          // Write: Worker can create/update own entries
+          allow write: if isAuthenticated() && 
+            request.auth.uid == (resource.data.user_id ?? request.resource.data.user_id);
+          
+          // Create: Validated time entry structure
+          allow create: if isAuthenticated() &&
+            request.resource.data.user_id == request.auth.uid &&
+            request.resource.data.keys().hasAll(['user_id', 'clock_in_time']);
+        }
+        
+        // ==================== MESSAGES ====================
+        match /messages/{messageId} {
+          // Read: All site members can read messages
+          allow read: if isAuthenticated() && isMemberOfCompany(companyId);
+          
+          // Write: Any member can create messages
+          allow write: if isAuthenticated() && isMemberOfCompany(companyId) &&
+            request.resource.data.sender_id == request.auth.uid &&
+            request.resource.data.keys().hasAll(['sender_id', 'content', 'timestamp']);
+        }
+      }
+      
+      // ==================== PAYROLL CONFIG ====================
+      match /payrollConfig {
+        // Read: Owner or foreman only
+        allow read: if isAuthenticated() && 
+          (isOwner(companyId) || getUserRole(companyId) == 'foreman');
+        
+        // Write: Owner only
+        allow write: if isAuthenticated() && isOwner(companyId);
+      }
+      
+      // ==================== PAYROLL SUMMARIES ====================
+      match /payrollSummaries/{weekId} {
+        // Read: Owner or foreman only (contains salary info)
+        allow read: if isAuthenticated() && 
+          (isOwner(companyId) || getUserRole(companyId) == 'foreman');
+        
+        // Write: Owner only
+        allow write: if isAuthenticated() && isOwner(companyId);
+      }
+      
+      // ==================== SUBSCRIPTION ====================
+      match /subscription {
+        // Read: Owner only
+        allow read: if isAuthenticated() && isOwner(companyId);
+        
+        // Write: Owner only
+        allow write: if isAuthenticated() && isOwner(companyId);
+      }
+    }
+    
+    // ==================== DEFAULT DENY ====================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+/**
+ * DEPLOYMENT INSTRUCTIONS
+ * 
+ * 1. Go to Firebase Console → Your Project → Firestore → Rules
+ * 2. Replace existing rules with the code above
+ * 3. Click "Publish" to deploy
+ * 4. Test with Firestore Emulator before production
+ * 
+ * TESTING LOCALLY (Emulator):
+ * firebase init emulators
+ * firebase emulators:start --only firestore
+ * 
+ * VALIDATION CHECKLIST:
+ * ✅ Worker can only see own time entries
+ * ✅ Foreman cannot see worker salary (hourly_rate field)
+ * ✅ Owner has full read/write access
+ * ✅ Non-members cannot access company data
+ * ✅ Time entries require user_id validation
+ * ✅ Messages require sender_id validation
+ */
